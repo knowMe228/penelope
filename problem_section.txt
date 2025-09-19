@@ -1,0 +1,11 @@
+								if stderr_stream in r:
+									data = stderr_stream.read(options.network_buffer_size)
+									if data:
+										error_buffer += data.decode()
+										while '
+' in error_buffer:
+											line, error_buffer = error_buffer.split('
+', 1)
+											logger.error(str(paint("<REMOTE>").cyan) + " " + str(paint(line).red))
+									else:
+										break

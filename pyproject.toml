@@ -8,6 +8,7 @@
   requires-python = ">=3.6"
   dependencies = [
     "prompt_toolkit>=3.0.0",
+    "rich>=10.0.0",
   ]
 
 [project.scripts]

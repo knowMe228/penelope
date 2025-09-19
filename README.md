@@ -34,9 +34,9 @@ For a more streamlined setup, it can be installed using pipx:
 ```bash
 pipx install git+https://github.com/brightio/penelope
 ```
-For enhanced auto-completion features, install the optional prompt_toolkit dependency:
+For enhanced auto-completion and progress bar features, install the optional dependencies:
 ```bash
-pipx inject penelope prompt_toolkit
+pipx inject penelope prompt_toolkit rich
 ```
 ## Features
 ### Session Features
@@ -163,6 +163,7 @@ Debug:
 * an option switch for disable all logging, not only sessions.
 * main menu autocompletion for short commands
 * ~~download/upload autocompletion~~ (Implemented with prompt_toolkit)
+* ~~progress bars for download/upload~~ (Implemented with rich)
 * IPv6 support
 * encryption
 * UDP support
