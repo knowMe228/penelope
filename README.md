@@ -26,13 +26,17 @@ Penelope is a powerful shell handler built as a modern netcat replacement for RC
 
 Penelope can be run on all Unix-based systems (Linux, macOS, FreeBSD etc) and requires **Python 3.6+**
 
-It requires no installation as it uses only Python’s standard library - just download and execute the script:
+It requires no installation as it uses only Python's standard library - just download and execute the script:
 ```bash
 wget https://raw.githubusercontent.com/brightio/penelope/refs/heads/main/penelope.py && python3 penelope.py
 ```
 For a more streamlined setup, it can be installed using pipx:
 ```bash
 pipx install git+https://github.com/brightio/penelope
+```
+For enhanced auto-completion features, install the optional prompt_toolkit dependency:
+```bash
+pipx inject penelope prompt_toolkit
 ```
 ## Features
 ### Session Features
@@ -103,6 +107,7 @@ https://github.com/brightio/penelope/assets/65655412/7295da32-28e2-4c92-971f-094
 Some Notes:
 - By default you need to press `F12` to detach the PTY shell and go to the Main Menu. If the upgrade was not possible the you ended up with a basic shell, you can detach it with `Ctrl+C`. This also prevents the accidental killing of the shell.
 - The Main Menu supports TAB completion and also short commands. For example instead of `interact 1` you can just type `i 1`.
+- Enhanced auto-completion is available when the `prompt_toolkit` Python package is installed. This provides context-aware completion for commands and their arguments.
 
 ![Main Menu](https://github.com/user-attachments/assets/b3f568bc-5e66-4e6f-9510-3e61a3518e82)
 
@@ -157,7 +162,7 @@ Debug:
 * currently spawn/script/portfwd commands are supported only on Unix shells. Those need to be implemented for Windows shells too.
 * an option switch for disable all logging, not only sessions.
 * main menu autocompletion for short commands
-* download/upload autocompletion
+* ~~download/upload autocompletion~~ (Implemented with prompt_toolkit)
 * IPv6 support
 * encryption
 * UDP support

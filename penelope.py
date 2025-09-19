@@ -62,6 +62,21 @@ from urllib.parse import unquote
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+# prompt_toolkit imports for auto-completion
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.completion import Completer, Completion
+    from prompt_toolkit.document import Document
+    from prompt_toolkit.history import FileHistory
+    HAS_PROMPT_TOOLKIT = True
+except ImportError:
+    HAS_PROMPT_TOOLKIT = False
+    PromptSession = None
+    Completer = object
+    Completion = None
+    Document = None
+    FileHistory = None
+
 ################################## PYTHON MISSING BATTERIES ####################################
 from string import ascii_letters
 from random import choice, randint
@@ -71,6 +86,99 @@ bdebug = lambda file, data: open("/tmp/" + file, "a").write(repr(data) + "\n")
 chunks = lambda string, length: (string[0 + i:length + i] for i in range(0, len(string), length))
 pathlink = lambda path: f'\x1b]8;;file://{path.parents[0]}\x07{path.parents[0]}{os.path.sep}\x1b]8;;\x07\x1b]8;;file://{path}\x07{path.name}\x1b]8;;\x07'
 normalize_path = lambda path: os.path.normpath(os.path.expandvars(os.path.expanduser(path)))
+
+
+class PenelopeCompleter(Completer):
+    """Command completer for Penelope commands"""
+    
+    def __init__(self, menu):
+        self.menu = menu
+        super().__init__()
+    
+    def get_completions(self, document, complete_event):
+        """Get command completions based on the current input"""
+        text = document.text_before_cursor.lstrip()
+        
+        # If we're at the beginning of the line, complete commands
+        if ' ' not in text:
+            word_before_cursor = text
+            commands = self.menu.raw_commands
+            for command in commands:
+                if command.startswith(word_before_cursor):
+                    yield Completion(command, start_position=-len(word_before_cursor))
+        else:
+            # We're completing arguments
+            parts = text.split(' ')
+            command = parts[0]
+            current_arg = parts[-1] if parts else ""
+            
+            # Handle specific command argument completion
+            if command == "use":
+                # Complete session IDs
+                for session_id in list(core.sessions.keys()) + ["none"]:
+                    session_str = str(session_id)
+                    if session_str.startswith(current_arg):
+                        yield Completion(session_str, start_position=-len(current_arg))
+            elif command == "run":
+                # Complete module names
+                try:
+                    # Use the global Module class
+                    mods = {module.__name__:module for module in GLOBAL_MODULE_CLASS.__subclasses__()}
+                    for module in mods.values():
+                        if module.__name__.startswith(current_arg):
+                            yield Completion(module.__name__, start_position=-len(current_arg))
+                except:
+                    pass  # Fallback if modules is not available
+            elif command in ["upload", "download", "open"]:
+                # File path completion
+                try:
+                    matches = glob(current_arg + '*')
+                    matches = [m + '/' if os.path.isdir(m) else m for m in matches]
+                    for match in matches:
+                        if match.startswith(current_arg):
+                            yield Completion(match, start_position=-len(current_arg))
+                except:
+                    pass  # Fallback if glob fails
+            elif command == "SET":
+                # Complete option names
+                for param in options.__dict__:
+                    if param.startswith(current_arg):
+                        yield Completion(param, start_position=-len(current_arg))
+            elif command == "listeners":
+                # Complete listener subcommands
+                if len(parts) <= 2:  # listeners or listeners <subcommand>
+                    subcommands = ["add", "stop"]
+                    for subcmd in subcommands:
+                        if subcmd.startswith(current_arg):
+                            yield Completion(subcmd, start_position=-len(current_arg))
+                elif len(parts) > 2 and parts[1] == "add":
+                    # Complete add arguments
+                    add_args = ["-i", "--interface", "-p", "--port", "-t", "--type"]
+                    for arg in add_args:
+                        if arg.startswith(current_arg):
+                            yield Completion(arg, start_position=-len(current_arg))
+                elif len(parts) > 2 and parts[1] == "stop":
+                    # Complete stop arguments (listener IDs)
+                    for listener_id in list(core.listeners.keys()) + ["*"]:
+                        listener_str = str(listener_id)
+                        if listener_str.startswith(current_arg):
+                            yield Completion(listener_str, start_position=-len(current_arg))
+            elif command == "kill":
+                # Complete session IDs and *
+                for session_id in list(core.sessions.keys()) + ["*"]:
+                    session_str = str(session_id)
+                    if session_str.startswith(current_arg):
+                        yield Completion(session_str, start_position=-len(current_arg))
+            elif command in ["sessions", "interact"]:
+                # Complete session IDs
+                for session_id in core.sessions.keys():
+                    session_str = str(session_id)
+                    if session_str.startswith(current_arg):
+                        yield Completion(session_str, start_position=-len(current_arg))
+            elif command == "connect":
+                # For connect, we could potentially complete hostnames from history or known hosts
+                # For now, we'll just allow normal text completion
+                pass
 
 def Open(item, terminal=False):
 	if myOS != 'Darwin' and not DISPLAY:
@@ -489,6 +597,25 @@ def my_input(text="", histfile=None, histlen=None, completer=lambda text, state:
 	if threading.current_thread().name == 'MainThread':
 		signal.signal(signal.SIGINT, keyboard_interrupt)
 
+	if HAS_PROMPT_TOOLKIT and 'menu' in globals() and text.strip() == getattr(menu, 'prompt', '').strip():
+		# Use prompt_toolkit for the main menu
+		# Use the plain text version of the prompt
+		plain_prompt = getattr(menu, 'plain_prompt', text)
+		session = PromptSession(
+			message=plain_prompt,
+			history=FileHistory(histfile) if histfile else None,
+			completer=PenelopeCompleter(menu) if 'menu' in globals() else None,
+			complete_while_typing=True
+		)
+		try:
+			response = session.prompt()
+			return response
+		except KeyboardInterrupt:
+			print("^C")
+			return ""
+		except EOFError:
+			return "exit"
+
 	if readline:
 		readline.set_completer(completer)
 		readline.set_completer_delims(completer_delims or default_readline_delims)
@@ -707,10 +834,13 @@ class BetterCMD:
 			return None
 	@staticmethod
 	def file_completer(text):
-		matches = glob(text + '*')
-		matches = [m + '/' if os.path.isdir(m) else m for m in matches]
-		#matches = [f"'{m}'" if ' ' in m else m for m in matches]
-		return matches
+		try:
+			matches = glob(text + '*')
+			matches = [m + '/' if os.path.isdir(m) else m for m in matches]
+			#matches = [f"'{m}'" if ' ' in m else m for m in matches]
+			return matches
+		except:
+			return []
 
 ##########################################################################################################
 
@@ -754,6 +884,13 @@ class MainMenu(BetterCMD):
 				f"{paint(f'(').cyan_DIM}{paint('Penelope').magenta}{paint(f')').cyan_DIM}"
 				f"{session_part}{paint('>').cyan_DIM} "
 		)
+	
+	@property
+	def plain_prompt(self):
+		"""Return a plain text version of the prompt without ANSI escape sequences"""
+		# Remove ANSI escape sequences from the colored prompt
+		import re
+		return re.sub(r'\x01?\x1b\[[0-9;]*m\x02?', '', self.prompt)
 
 	def session_operation(current=False, extra=[]):
 		def inner(func):
@@ -4312,15 +4449,19 @@ def agent():
 	os.kill(os.getppid(), signal.SIGKILL) # TODO
 
 
-def modules():
-	return {module.__name__:module for module in Module.__subclasses__()}
-
-
 class Module:
 	enabled = True
 	on_session_start = False
 	on_session_end = False
 	category = "Misc"
+
+
+# Make Module class available globally for the completer
+GLOBAL_MODULE_CLASS = Module
+
+
+def modules():
+	return {module.__name__:module for module in Module.__subclasses__()}
 
 
 class upload_privesc_scripts(Module):
@@ -5080,6 +5221,9 @@ def main():
 	# Main Menu
 	elif options.menu:
 		signal.signal(signal.SIGINT, keyboard_interrupt)
+		# Notify user about auto-completion availability
+		if HAS_PROMPT_TOOLKIT:
+			cmdlogger.info("Enhanced auto-completion is available (requires TAB key)")
 		menu.show()
 		menu.start()
 
@@ -5102,6 +5246,9 @@ def main():
 		try:
 			if subprocess.run(options.args).returncode == 0:
 				logger.info("SSH command executed!")
+				# Notify user about auto-completion availability
+				if HAS_PROMPT_TOOLKIT:
+					cmdlogger.info("Enhanced auto-completion is available (requires TAB key)")
 				menu.start()
 			else:
 				core.stop()
@@ -5113,6 +5260,9 @@ def main():
 	elif options.connect:
 		if not Connect(options.connect, options.port or options.default_bindshell_port):
 			sys.exit(1)
+		# Notify user about auto-completion availability
+		if HAS_PROMPT_TOOLKIT:
+			cmdlogger.info("Enhanced auto-completion is available (requires TAB key)")
 		menu.start()
 
 	# Reverse Listener
@@ -5123,6 +5273,9 @@ def main():
 
 		listener_menu()
 		signal.signal(signal.SIGINT, keyboard_interrupt)
+		# Notify user about auto-completion availability
+		if HAS_PROMPT_TOOLKIT:
+			cmdlogger.info("Enhanced auto-completion is available (requires TAB key)")
 		menu.start()
 
 #################### PROGRAM LOGIC ####################
@@ -5219,7 +5372,7 @@ except ImportError:
 	readline = None
 	default_readline_delims = None
 
-## Create basic objects
+# Create basic objects
 core = Core()
 menu = MainMenu(histfile=options.cmd_histfile, histlen=options.histlength)
 start = menu.start
